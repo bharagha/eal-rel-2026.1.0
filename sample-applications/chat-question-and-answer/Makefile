@@ -46,15 +46,15 @@ NODE_VERSION := 22
 DEFAULT_REGISTRY := intel/
 
 # Chat Q&A image tags
-DEFAULT_TAG := 2.1.0-rc1
+DEFAULT_TAG := 2.1.0
 DEFAULT_UI_TAG := $(DEFAULT_TAG)
 DEFAULT_BACKEND_TAG := $(DEFAULT_TAG)
-DEFAULT_DOCUMENT_INGESTION_TAG := 1.2.3
+DEFAULT_DOCUMENT_INGESTION_TAG := 1.2.4
 
 # Core image tags (shared with chat-question-and-answer-core)
-DEFAULT_CORE_TAG := core_1.3.1
-DEFAULT_CORE_GPU_TAG := core_gpu_1.3.1
-DEFAULT_CORE_OLLAMA_TAG := core_ollama_1.3.1
+DEFAULT_CORE_TAG := core_1.3.2
+DEFAULT_CORE_GPU_TAG := core_gpu_1.3.2
+DEFAULT_CORE_OLLAMA_TAG := core_ollama_1.3.2
 
 # ==============================================================================
 # Model Configuration
