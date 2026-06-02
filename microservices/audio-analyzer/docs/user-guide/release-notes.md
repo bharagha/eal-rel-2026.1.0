@@ -3,7 +3,10 @@
 This page tracks releases of the Audio Analyzer microservice. The most
 recent release is listed first; older entries are preserved for history.
 
-## v1.4.0
+## Version 1.4.0
+
+
+**June 17, 2026**
 
 First release of the Audio Analyzer as a self-contained,
 OpenAI API-compatible speech-to-text microservice with optional voice
@@ -22,6 +25,7 @@ sentiment analysis, built for edge deployment on Intel hardware.
   RNNoise denoising.
 - Session continuation via `session_id` (returned in `X-Session-ID`).
 - Health (`/health`) and ALSA device listing (`/devices`) endpoints.
+- New User Guide doc set, including: overview, get-started, how-it-works  configuration, api-reference, and troubleshooting Markdown files, plus an architecture diagram and a restructured README.md.
 
 **Improved**
 
