@@ -52,10 +52,17 @@ support different provider backends. `type` is passed to LiteLLM as the prefix
 in `type/model`. Use `hosted_vllm` for a self-hosted vLLM server, or any other
 [LiteLLM-supported provider](https://docs.litellm.ai/docs/providers).
 
-## 2. Deploy
+## 2. Build Image
 
-Deploy with Docker. The first run builds the image and exposes the router on
-port `8000` by default:
+Build the Docker image:
+
+```bash
+bash scripts/deploy_docker.sh --build
+```
+
+## 3. Deploy
+
+Start the router on port `8000` by default:
 
 ```bash
 bash scripts/deploy_docker.sh
@@ -79,7 +86,7 @@ To use a different host port:
 ROUTER_PORT=9000 bash scripts/deploy_docker.sh
 ```
 
-## 3. Verify
+## 4. Verify
 
 List available models. The response includes `router` plus your configured
 providers:

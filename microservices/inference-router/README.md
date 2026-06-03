@@ -22,17 +22,26 @@ endpoint.
 
 ### 1. Configure
 
-Copy the example configuration and edit it to point at your backend:
+Create the runtime workspace folder, copy the example configuration into it,
+and edit it to point at your backend:
 
 ```bash
 cd inference-router
-cp config.example.yaml config.yaml
+mkdir -p workspace
+cp config.example.yaml workspace/config.yaml
 ```
 
-### 2. Start the Service
+### 2. Build the Image
 
-Deploy with Docker. The first run builds the image and exposes the router on
-port `8000` by default:
+Build the Docker image:
+
+```bash
+bash scripts/deploy_docker.sh --build
+```
+
+### 3. Start the Service
+
+Start the router on port `8000` by default:
 
 ```bash
 bash scripts/deploy_docker.sh

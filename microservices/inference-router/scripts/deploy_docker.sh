@@ -11,11 +11,7 @@
 #   --port PORT               Router port (default: 8000)
 #   --verbose                 Enable verbose logging
 #   --verbose_full            Enable full verbose logging (requests + responses)
-#   --save_logs_to DIR        Path *inside the container* where gateway.log,
-#                             telemetry.jsonl and per-request logs are written.
-#                             Defaults to /workspace/logs, which maps to
-#                             <project-root>/logs in the mounted workspace.
-#   --build                   Force rebuild the image even if it already exists
+#   --build                   Build the Docker image with scripts/build_docker.sh
 #   --down                    Stop and remove the router container
 #
 # Examples:
@@ -37,7 +33,6 @@ FORCE_BUILD=false
 ACTION="up"
 GATEWAY_VERBOSE=""
 GATEWAY_VERBOSE_FULL=""
-GATEWAY_LOG_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -47,15 +42,13 @@ while [[ $# -gt 0 ]]; do
             GATEWAY_VERBOSE=1; shift ;;
         --verbose_full)
             GATEWAY_VERBOSE=1; GATEWAY_VERBOSE_FULL=1; shift ;;
-        --save_logs_to)
-            GATEWAY_LOG_DIR="$2"; shift 2 ;;
         --build)
             FORCE_BUILD=true; shift ;;
         --down)
             ACTION="down"; shift ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: bash scripts/deploy_docker.sh [--port PORT] [--verbose] [--verbose_full] [--save_logs_to DIR] [--build] [--down]"
+            echo "Usage: bash scripts/deploy_docker.sh [--port PORT] [--verbose] [--verbose_full] [--build] [--down]"
             exit 1 ;;
     esac
 done
@@ -93,7 +86,6 @@ mkdir -p "$PROJECT_ROOT/workspace/logs"
 export ROUTER_PORT
 export GATEWAY_VERBOSE
 export GATEWAY_VERBOSE_FULL
-export GATEWAY_LOG_DIR
 # Proxy settings are forwarded into the container by docker-compose.yml.
 export http_proxy https_proxy no_proxy
 
@@ -105,13 +97,12 @@ echo "  Compose file:     $COMPOSE_FILE"
 echo "  Port:             $ROUTER_PORT"
 [ -n "$GATEWAY_VERBOSE" ]           && echo "  Verbose:          enabled"
 [ -n "$GATEWAY_VERBOSE_FULL" ]      && echo "  Verbose full:     enabled"
-[ -n "$GATEWAY_LOG_DIR" ]           && echo "  Log dir:          $GATEWAY_LOG_DIR"
 echo ""
 
 # ---- Build (optional) ----
 if [ "$FORCE_BUILD" = true ]; then
-    echo "Building image (forced rebuild)..."
-    "${COMPOSE[@]}" build
+    echo "Building image with scripts/build_docker.sh..."
+    bash "$SCRIPT_DIR/build_docker.sh"
 fi
 
 # ---- Run ----

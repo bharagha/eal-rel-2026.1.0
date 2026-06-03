@@ -14,9 +14,8 @@ services:
         https_proxy: ${https_proxy:-}
         no_proxy: ${no_proxy:-}
     network_mode: host
-    working_dir: /workspace
     volumes:
-      - ../../workspace:/workspace
+      - ../../workspace:/app
     command: ["sh", "-c", "uvicorn src.router.gateway:app --host 0.0.0.0 --port ${ROUTER_PORT:-8000}"]
     env_file:
       - path: ../../.env
@@ -25,8 +24,8 @@ services:
       - ROUTER_PORT=${ROUTER_PORT:-8000}
       - GATEWAY_VERBOSE=${GATEWAY_VERBOSE:-}
       - GATEWAY_VERBOSE_FULL=${GATEWAY_VERBOSE_FULL:-}
-      - GATEWAY_CONFIG=/workspace/config.yaml
-      - GATEWAY_LOG_DIR=${GATEWAY_LOG_DIR:-/workspace/logs}
+      - GATEWAY_CONFIG=/app/config.yaml
+      - GATEWAY_LOG_DIR=${GATEWAY_LOG_DIR:-/app/logs}
       - HF_ENDPOINT=https://hf-mirror.com
       - http_proxy=${http_proxy:-}
       - https_proxy=${https_proxy:-}
