@@ -1,0 +1,74 @@
+# Inference Router
+
+A pluggable FastAPI service for routing chat completion requests to multiple
+inference providers. Backed by [LiteLLM](https://docs.litellm.ai/), it can talk
+to any provider LiteLLM supports, including self-hosted vLLM/OpenVINO, OpenAI,
+Anthropic, MiniMax, Ollama, and more, through a single OpenAI-compatible
+endpoint.
+
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)]()
+
+## Features
+
+- OpenAI-compatible `/v1/chat/completions` API with streaming and non-streaming responses.
+- LiteLLM-backed provider support for local, hosted, and cloud inference backends.
+- Policy-based routing through strategies and policies in [src/rsd](src/rsd).
+- Pre-routing, post-routing and post-response plugin hooks.
+- Per-provider telemetry for requests, tokens, latency, TTFT, and TPOT.
+- Environment variable expansion in configuration values.
+
+## Quick Start
+
+### 1. Configure
+
+Copy the example configuration and edit it to point at your backend:
+
+```bash
+cd inference-router
+cp config.example.yaml config.yaml
+```
+
+### 2. Start the Service
+
+Deploy with Docker. The first run builds the image and exposes the router on
+port `8000` by default:
+
+```bash
+bash scripts/deploy_docker.sh
+```
+
+To stop the service:
+
+```bash
+bash scripts/deploy_docker.sh --down
+```
+
+See [docs/quick-start-guide.md](docs/quick-start-guide.md) for more information.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  FastAPI Gateway (/v1/chat/completions) │
+└────────────────┬────────────────────────┘
+                 │
+       ┌─────────▼──────────┐
+       │  Router Orchestrator│ (applies routing policy)
+       └─────────┬──────────┘
+                 │
+    ┌────────────▼──────────────┐
+    │ ProviderAdapter Interface │
+    ├────────────┬──────────────┤
+    │  vLLM      │   (Ollama)   │
+    │ Provider   │   (Future)   │
+    └────────────┴──────────────┘
+                 │
+    ┌────────────▼──────────────┐
+    │ Backend Services          │
+    │ (vLLM, Ollama, etc)       │
+    └───────────────────────────┘
+
+    Telemetry Observable at Every Layer
+    (Events, Metrics, Pluggable Backends)
+```

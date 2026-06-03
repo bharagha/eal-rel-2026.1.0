@@ -1,0 +1,39 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  # Inference Router service
+  router:
+    image: inference-router:latest
+    container_name: inference-router
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        no_proxy: ${no_proxy:-}
+    network_mode: host
+    working_dir: /workspace
+    volumes:
+      - ../../workspace:/workspace
+    command: ["sh", "-c", "uvicorn src.router.gateway:app --host 0.0.0.0 --port ${ROUTER_PORT:-8000}"]
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      - ROUTER_PORT=${ROUTER_PORT:-8000}
+      - GATEWAY_VERBOSE=${GATEWAY_VERBOSE:-}
+      - GATEWAY_VERBOSE_FULL=${GATEWAY_VERBOSE_FULL:-}
+      - GATEWAY_CONFIG=/workspace/config.yaml
+      - GATEWAY_LOG_DIR=${GATEWAY_LOG_DIR:-/workspace/logs}
+      - HF_ENDPOINT=https://hf-mirror.com
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - no_proxy=${no_proxy:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ROUTER_PORT:-8000}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
