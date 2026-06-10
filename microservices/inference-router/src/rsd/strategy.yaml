@@ -12,20 +12,8 @@ strategies:
             - user
     provider_selector:
       label: planning
-      complexity: 0.7
-
-  - name: QueryComplexity
-    description: "Routes requests based on query complexity capability."
-    rules:
-      - type: QueryComplexityScoreRule
-        param:
-          score_range:
-            - 0.0
-            - 1.0
-          target: 0.4
-          operator: gte
-    provider_selector:
-      complexity: 0.7
+      capability:
+        complexity: 0.7
 
   - name: ContextLengthQuality
     description: "Routes requests based on context length zones."
@@ -40,10 +28,11 @@ strategies:
             - - 16001
               - 128000
     provider_selector:
-      complexity:
-        0: 0.3
-        1: 0.5
-        2: 0.7
+      capability:
+        complexity:
+          0: 0.3
+          1: 0.5
+          2: 0.7
 
   - name: ZeroCost
     description: "Routes requests based on no cost provider."

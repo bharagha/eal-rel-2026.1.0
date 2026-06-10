@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from src.config import RouterConfig, ProviderConfig, TelemetryConfig
 from src.router import RouterOrchestrator
 from src.api.app import create_app
-from src.observability import InMemoryTelemetry, TelemetryRecorder
+from src.observability import InMemoryTelemetry
 
 
 @pytest.fixture
@@ -20,6 +20,7 @@ def test_router_config():
             ProviderConfig(
                 name="test-vllm",
                 type="vllm",
+                model="test-model",
                 enabled=True,
                 settings={
                     "endpoint": "http://localhost:9999",  # Fake endpoint
@@ -44,8 +45,20 @@ async def test_router(test_router_config):
 def test_app(test_router, test_router_config):
     """Create test FastAPI app."""
     telemetry = InMemoryTelemetry()
-    telemetry_recorder = TelemetryRecorder(telemetry)
-    return create_app(test_router, test_router_config, telemetry_recorder)
+    return create_app(test_router, test_router_config, telemetry)
+
+
+@pytest.mark.integration
+def test_root_endpoint(test_app):
+    """Root path advertises the public endpoints."""
+    client = TestClient(test_app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Inference Router API"
+    assert data["endpoints"]["metrics"] == "/v1/metrics"
+    assert data["endpoints"]["chat"] == "/v1/chat/completions"
 
 
 @pytest.mark.integration
@@ -57,6 +70,8 @@ def test_health_endpoint(test_app):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
+    assert "concurrency" in data
+    assert "active_requests" in data["concurrency"]
 
 
 @pytest.mark.integration
@@ -73,12 +88,20 @@ def test_health_detailed_endpoint(test_app):
 
 @pytest.mark.integration
 def test_list_models_endpoint(test_app):
-    """Test list models endpoint."""
+    """``/v1/models`` reports backend model names with provider in ``owned_by``."""
     client = TestClient(test_app)
     response = client.get("/v1/models")
 
-    assert response.status_code in [200, 502]  # Either success or provider unavailable
-    assert "data" in response.json() or "error" in response.json()
+    assert response.status_code == 200
+    body = response.json()
+    assert body["object"] == "list"
+    ids = [m["id"] for m in body["data"]]
+    # Provider configured with model="test-model" plus the "auto" virtual model.
+    assert "test-model" in ids
+    assert "auto" in ids
+    # ``owned_by`` carries the provider name for each provider entry.
+    test_model_entry = next(m for m in body["data"] if m["id"] == "test-model")
+    assert test_model_entry["owned_by"] == "test-vllm"
 
 
 @pytest.mark.integration
@@ -90,15 +113,32 @@ def test_chat_completions_invalid_request(test_app):
     response = client.post("/v1/chat/completions", json={})
 
     assert response.status_code == 422  # Validation error
+    # Custom validation handler echoes the offending body so 422s are debuggable.
+    body = response.json()
+    assert body["error"]["type"] == "RequestValidationError"
 
 
 @pytest.mark.integration
 def test_metrics_endpoint(test_app):
-    """Test metrics endpoint."""
+    """``/v1/metrics`` returns the per-provider telemetry shape."""
     client = TestClient(test_app)
-    response = client.get("/metrics")
+    response = client.get("/v1/metrics")
 
     assert response.status_code == 200
+    data = response.json()
+    assert set(data.keys()) >= {"routing_stats", "token_metrics", "latency_metrics"}
+    assert "by_provider" in data["token_metrics"]
+    assert "overall" in data["token_metrics"]
+
+
+@pytest.mark.integration
+def test_metrics_reset_endpoint(test_app):
+    """``/v1/metrics/reset`` clears telemetry."""
+    client = TestClient(test_app)
+    response = client.post("/v1/metrics/reset")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
 
 
 @pytest.mark.integration

@@ -39,10 +39,10 @@ class GatewayTestClient:
 		return self._request("POST", "/v1/chat/completions", json=payload)
 
 	def get_stats(self) -> dict[str, Any]:
-		return self._request("GET", "/v1/stats")
+		return self._request("GET", "/v1/metrics")
 
 	def reset_stats(self) -> dict[str, Any]:
-		return self._request("POST", "/v1/stats/reset")
+		return self._request("POST", "/v1/metrics/reset")
 
 	def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
 		response = self.session.request(

@@ -9,6 +9,7 @@ from src.models import ChatCompletionMessage, ChatCompletionRequest, ChatComplet
 from src.providers.base import ProviderAdapter, ProviderMetadata
 from src.rsd.strategy import (
     build_strategy_definition,
+    CapabilitySelector,
     ProviderSelector,
     RuleBinding,
     SortCriterion,
@@ -44,7 +45,7 @@ def test_strategy_loader_uses_type_as_rule_class():
                     "param": {"zones": [(0, 4000), (4001, 16000)]},
                 }
             ],
-            "provider_selector": {"complexity": {0: 0.3, 1: 0.5}},
+            "provider_selector": {"capability": {"complexity": {0: 0.3, 1: 0.5}}},
         }
     )
 
@@ -65,7 +66,7 @@ def test_strategy_loader_requires_rule_type():
                         "param": {"zones": [(0, 4000), (4001, 16000)]},
                     }
                 ],
-                "provider_selector": {"complexity": {0: 0.3, 1: 0.5}},
+                "provider_selector": {"capability": {"complexity": {0: 0.3, 1: 0.5}}},
             }
         )
 
@@ -260,7 +261,7 @@ async def test_strategy_executor_filters_providers_by_complexity_selector():
                 QueryComplexityScoreRule((0.0, 1.0), target=0.5),
             )
         ],
-        provider_selector=ProviderSelector(complexity=0.7),
+        provider_selector=ProviderSelector(capability=CapabilitySelector(complexity=0.7)),
         sort=[SortCriterion("cost")],
     )
 
@@ -298,7 +299,7 @@ async def test_strategy_executor_matches_context_length_zone_rule():
                 ContextLengthRule(zones=[(0, 4000), (4001, 16000)]),
             )
         ],
-        provider_selector=ProviderSelector(complexity=0.7),
+        provider_selector=ProviderSelector(capability=CapabilitySelector(complexity=0.7)),
         sort=[SortCriterion("cost")],
     )
 
@@ -334,7 +335,9 @@ async def test_strategy_executor_uses_zone_complexity_selector():
     executor = StrategyExecutor()
     definition = StrategyDefinition(
         name="context_length_zone_selector",
-        provider_selector=ProviderSelector(complexity={0: 0.3, 1: 0.5}),
+        provider_selector=ProviderSelector(
+            capability=CapabilitySelector(complexity={0: 0.3, 1: 0.5})
+        ),
         rules=[
             RuleBinding(
                 "context_length_zone",
@@ -423,6 +426,80 @@ async def test_strategy_executor_filters_providers_by_cost_selector():
     candidates = await executor.execute(request, providers, definition)
 
     assert [candidate.provider.name for candidate in candidates] == ["cheap"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_strategy_executor_filters_providers_by_tool_calling_selector():
+    """StrategyExecutor should only consider providers with matching tool capability."""
+    request = ChatCompletionRequest(
+        model="test-model",
+        messages=[
+            ChatCompletionMessage(
+                role=ChatCompletionRole.USER,
+                content="retrieve documents with a tool",
+            )
+        ],
+    )
+    providers = [
+        MockProvider(
+            "tool-capable",
+            metadata=ProviderMetadata(capability={"tool_calling": True}),
+        ),
+        MockProvider(
+            "no-tools",
+            metadata=ProviderMetadata(capability={"tool_calling": False}),
+        ),
+    ]
+    executor = StrategyExecutor()
+    definition = StrategyDefinition(
+        name="tool_calling_required",
+        provider_selector=ProviderSelector(
+            capability=CapabilitySelector(tool_calling=True)
+        ),
+        rules=[
+            RuleBinding(
+                "tool_score",
+                QueryComplexityScoreRule((0.0, 1.0), target=0.5),
+            )
+        ],
+    )
+
+    candidates = await executor.execute(request, providers, definition)
+
+    assert [candidate.provider.name for candidate in candidates] == ["tool-capable"]
+
+
+@pytest.mark.unit
+def test_strategy_loader_rejects_non_boolean_tool_calling_selector():
+    """tool_calling selector values must be explicit booleans."""
+    with pytest.raises(
+        ConfigurationError,
+        match="provider_selector.capability.tool_calling must be a boolean",
+    ):
+        build_strategy_definition(
+            {
+                "name": "tool_calling",
+                "rules": [],
+                "provider_selector": {"capability": {"tool_calling": "true"}},
+            }
+        )
+
+
+@pytest.mark.unit
+def test_strategy_loader_rejects_top_level_capability_selector():
+    """Capability selectors should use the same nested shape as provider metadata."""
+    with pytest.raises(
+        ConfigurationError,
+        match="provider_selector.complexity must move to provider_selector.capability.complexity",
+    ):
+        build_strategy_definition(
+            {
+                "name": "legacy_complexity",
+                "rules": [],
+                "provider_selector": {"complexity": 0.7},
+            }
+        )
 
 
 @pytest.mark.unit

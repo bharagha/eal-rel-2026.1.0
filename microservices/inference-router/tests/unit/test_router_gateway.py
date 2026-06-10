@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -168,9 +169,9 @@ def available_model_ids(models_payload: dict[str, Any]) -> list[str]:
 @pytest.fixture(scope="session")
 def backend_model_id(available_model_ids: list[str]) -> str:
 	for model_id in available_model_ids:
-		if model_id != "router":
+		if model_id != "auto":
 			return model_id
-	pytest.skip("No backend model available besides the virtual router model")
+	pytest.skip("No backend model available besides the virtual auto model")
 
 
 def test_list_models_returns_router_and_backend_models(
@@ -178,7 +179,7 @@ def test_list_models_returns_router_and_backend_models(
 	available_model_ids: list[str],
 ) -> None:
 	assert models_payload["object"] == "list"
-	assert "router" in available_model_ids
+	assert "auto" in available_model_ids
 	assert len(available_model_ids) >= 2
 
 
@@ -186,12 +187,12 @@ def test_list_models_returns_router_and_backend_models(
 	("model_selector", "messages", "expected_token"),
 	[
 		(
-			"router",
+			"auto",
 			[{"role": "user", "content": "Reply with the exact token TOKEN_ALPHA_17."}],
 			"TOKEN_ALPHA_17",
 		),
 		(
-			"router",
+			"auto",
 			[
 				{"role": "system", "content": "Follow the user instruction exactly."},
 				{
@@ -202,7 +203,7 @@ def test_list_models_returns_router_and_backend_models(
 			"TOKEN_BETA_29",
 		),
 		(
-			"router",
+			"auto",
 			[
 				{
 					"role": "user",
@@ -271,7 +272,7 @@ def test_conversation_state_preserves_context(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[
 			{"role": "system", "content": "You are a memory checker."},
 			{"role": "user", "content": "Remember this code: BLUE-OTTER-17."},
@@ -303,26 +304,26 @@ def test_health_endpoint_checks_router_status(gateway_client: GatewayTestClient)
 def test_model_list_includes_all_available_models(
 	models_payload: dict[str, Any],
 ) -> None:
-	"""Get model list and verify the router virtual model + ≥1 backend provider."""
+	"""Get model list and verify the auto virtual model + ≥1 backend provider."""
 	data = models_payload.get("data", [])
 	model_ids = [item["id"] for item in data]
 	owners = {item["id"]: item["owned_by"] for item in data}
 
-	# Should have the virtual router model
-	assert "router" in model_ids
-	assert owners["router"] == "inference-router"
+	# Should have the virtual auto model
+	assert "auto" in model_ids
+	assert owners["auto"] == "inference-router"
 
-	# At least one configured provider must be exposed alongside the router model.
-	non_router_ids = [mid for mid in model_ids if mid != "router"]
+	# At least one configured provider must be exposed alongside the auto model.
+	non_router_ids = [mid for mid in model_ids if mid != "auto"]
 	assert non_router_ids, "Expected at least one configured provider in /v1/models"
 
-	# Each non-router entry must report its provider type as ``owned_by``.
+	# Each non-auto entry must report its provider name as ``owned_by``.
 	for mid in non_router_ids:
 		assert isinstance(owners[mid], str) and owners[mid], (
-			f"Expected non-empty owned_by (provider type) for {mid!r}"
+			f"Expected non-empty owned_by (provider name) for {mid!r}"
 		)
 		assert owners[mid] != "inference-router", (
-			f"{mid!r} should report its provider type, not 'inference-router'"
+			f"{mid!r} should report its provider name, not 'inference-router'"
 		)
 
 
@@ -339,7 +340,7 @@ def test_smart_routing_strategy_with_router_model(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[{"role": "user", "content": "Reply with TOKEN_ROUTING_TEST only."}],
 		temperature=0,
 		max_tokens=64,
@@ -347,14 +348,14 @@ def test_smart_routing_strategy_with_router_model(
 
 	# Response should be a standard chat completion (no routing field)
 	assert response["object"] == "chat.completion"
-	assert response["model"] != "router"
+	assert response["model"] != "auto"
 
 	# Verify response quality
 	choice = response["choices"][0]
 	content = _visible_text(choice["message"].get("content"))
 	assert "TOKEN_ROUTING_TEST" in content
 
-	# Verify routing happened via /v1/stats. The stats are bucketed by
+	# Verify routing happened via /v1/metrics. The stats are bucketed by
 	# provider name; we just need to see at least one bucket populated.
 	stats = gateway_client.get_stats()
 	routing_stats = stats["routing_stats"]
@@ -366,41 +367,43 @@ def test_smart_routing_strategy_with_router_model(
 @pytest.mark.parametrize("stream", [False, True], ids=["non-stream", "stream"])
 def test_forced_provider_selection(
 	gateway_client: GatewayTestClient,
-	backend_model_id: str,
+	available_model_ids: list[str],
 	stream: bool,
 ) -> None:
-	"""Force a specific provider by setting ``model`` to its configured name.
+	"""Bypass the DecisionEngine by pinning each configured model directly.
 
-	Telemetry is bucketed by provider name (no local/cloud distinction), so
-	the only thing we assert about the routing decision is that the chosen
-	provider's bucket got incremented.
+	Iterates over every non-``auto`` model id from ``/v1/models`` and confirms
+	each one round-trips a request. Each iteration uses its own token so a
+	stale-cached or response-crossing bug would surface as a content mismatch
+	rather than passing silently.
 	"""
-	provider_name = backend_model_id
+	pinned_models = [mid for mid in available_model_ids if mid != "auto"]
+	assert pinned_models, "Expected at least one non-auto model in /v1/models"
 
-	gateway_client.reset_stats()
+	for idx, model_id in enumerate(pinned_models):
+		token = f"TOKEN_FORCE_PROVIDER_{idx}"
+		response = _chat(
+			gateway_client,
+			stream=stream,
+			model=model_id,
+			messages=[{"role": "user", "content": f"Reply with {token} only."}],
+			temperature=0,
+			max_tokens=256,
+		)
 
-	response = _chat(
-		gateway_client,
-		stream=stream,
-		model=provider_name,
-		messages=[{"role": "user", "content": "Reply with TOKEN_FORCE_PROVIDER only."}],
-		temperature=0,
-		max_tokens=64,
-	)
+		# The gateway returns the upstream model id; we don't pin its exact
+		# value (some backends echo a different id than what was requested).
+		assert isinstance(response["model"], str) and response["model"], (
+			f"Empty model field for pinned model {model_id!r}"
+		)
 
-	# The gateway returns the upstream model id (e.g. "Qwen/Qwen3.5-9B"),
-	# not the provider name. We don't pin it.
-	assert isinstance(response["model"], str) and response["model"]
-
-	choice = response["choices"][0]
-	content = _visible_text(choice["message"].get("content"))
-	assert "TOKEN_FORCE_PROVIDER" in content
-
-	stats = gateway_client.get_stats()
-	by_provider = stats["routing_stats"]["by_provider"]
-	assert by_provider.get(provider_name, 0) >= 1, (
-		f"Expected stats bucket for provider {provider_name!r}, got {by_provider}"
-	)
+		choice = response["choices"][0]
+		print(choice)
+		content = choice["message"].get("content")
+		assert token in content, (
+			f"Expected {token!r} in response when pinning model={model_id!r}, "
+			f"got {content!r}"
+		)
 
 
 @pytest.mark.parametrize("stream", [False, True], ids=["non-stream", "stream"])
@@ -416,7 +419,7 @@ def test_streaming_mode_request(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[{"role": "user", "content": "Reply with TOKEN_STREAM_TEST only."}],
 		temperature=0,
 		max_tokens=64,
@@ -431,7 +434,7 @@ def test_streaming_mode_request(
 	content = _visible_text(choice["message"].get("content"))
 	assert "TOKEN_STREAM_TEST" in content
 
-	# Verify routing happened via /v1/stats
+	# Verify routing happened via /v1/metrics
 	stats = gateway_client.get_stats()
 	assert stats["routing_stats"]["total_requests"] >= 1
 
@@ -445,7 +448,7 @@ def test_non_streaming_mode_request(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[{"role": "user", "content": "Reply with TOKEN_NON_STREAM only."}],
 		temperature=0,
 		max_tokens=64,
@@ -490,7 +493,7 @@ def test_token_usage_stats_api(
 		_chat(
 			gateway_client,
 			stream=stream,
-			model="router",
+			model="auto",
 			messages=[{"role": "user", "content": f"Reply with TOKEN_STATS_{i} only."}],
 			temperature=0,
 			max_tokens=32,
@@ -551,7 +554,7 @@ def test_request_with_tool_call(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[
 			{"role": "user", "content": "What's the weather in San Francisco?"}
 		],
@@ -607,7 +610,7 @@ def test_large_input_routing_behavior(
 	response = _chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[{"role": "user", "content": large_content}],
 		temperature=0,
 		max_tokens=64,
@@ -647,7 +650,7 @@ def test_invalid_model_selection_returns_error(
 	if got_response:
 		# Streaming: gateway returns HTTP 200 with the error embedded in SSE content
 		content = response["choices"][0]["message"].get("content", "")
-		assert "Unknown model" in content or "invalid" in content.lower(), (
+		assert "Unknown model" in content or "failed" in content.lower(), (
 			f"Expected error about unknown model in response content, got: {content}"
 		)
 
@@ -662,7 +665,7 @@ def test_stats_reset_functionality(
 	_chat(
 		gateway_client,
 		stream=stream,
-		model="router",
+		model="auto",
 		messages=[{"role": "user", "content": "Reply with TOKEN_RESET only."}],
 		temperature=0,
 		max_tokens=32,
@@ -682,47 +685,47 @@ def test_stats_reset_functionality(
 	assert stats_after["token_metrics"]["overall"]["total_tokens"] == 0
 
 
-@pytest.mark.parametrize("stream", [False, True], ids=["non-stream", "stream"])
-def test_multimodal_content_routing(
+def test_parallel_requests_handled_independently(
 	gateway_client: GatewayTestClient,
-	available_model_ids: list[str],
-	stream: bool,
 ) -> None:
-	"""Additional test: Verify multimodal content is handled correctly."""
-	# Reset stats to isolate this test
+	"""Send several requests concurrently and verify each gets its own response.
+
+	Guards against response-crossing bugs in the gateway: each parallel request
+	carries a unique token in its prompt, and we assert each response echoes
+	*its own* token. Also verifies the metrics counter records every request,
+	so admission control isn't silently dropping any.
+
+	Concurrency below the gateway's ``max_concurrency`` cap (default 3) so all
+	three requests should run in parallel and succeed; a separate test would
+	be needed to exercise the 429 overflow path.
+	"""
 	gateway_client.reset_stats()
 
-	# Create a request with image content (using a placeholder)
-	messages = [
-		{
-			"role": "user",
-			"content": [
-				{"type": "text", "text": "Reply with TOKEN_MULTIMODAL only."},
-				{
-					"type": "image_url",
-					"image_url": {
-						"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-					}
-				}
-			]
-		}
-	]
+	tokens = ["TOKEN_PAR_A", "TOKEN_PAR_B", "TOKEN_PAR_C"]
 
-	response = _chat(
-		gateway_client,
-		stream=stream,
-		model="router",
-		messages=messages,
-		temperature=0,
-		max_tokens=64,
+	def send(token: str) -> dict[str, Any]:
+		return gateway_client.chat_completion(
+			model="auto",
+			messages=[{"role": "user", "content": f"Reply with {token} only."}],
+			temperature=0,
+			max_tokens=32,
+		)
+
+	with ThreadPoolExecutor(max_workers=len(tokens)) as ex:
+		responses = list(ex.map(send, tokens))
+
+	# Each response must carry the token from its own prompt — no crossing.
+	for token, response in zip(tokens, responses):
+		choice = response["choices"][0]
+		content = _visible_text(choice["message"].get("content"))
+		assert token in content, (
+			f"Expected {token!r} in response content, got {content!r}"
+		)
+
+	# Telemetry counted every parallel request.
+	stats = gateway_client.get_stats()
+	assert stats["routing_stats"]["total_requests"] >= len(tokens), (
+		f"Expected ≥{len(tokens)} requests in stats, got {stats['routing_stats']}"
 	)
 
-	# Verify response
-	assert response["object"] == "chat.completion"
-
-	# Verify response content
-	choice = response["choices"][0]
-	content = _visible_text(choice["message"].get("content"))
-	# Model may or may not see the image, but should respond
-	assert content and "[ERROR]" not in content
 

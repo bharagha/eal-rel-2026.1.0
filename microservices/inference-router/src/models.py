@@ -72,9 +72,8 @@ class ChatCompletionRequest(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    # ``router`` selects the configured routing policy; any configured provider
-    # name skips the policy and calls that provider directly.
-    model: str = Field(default="router", description="Model identifier")
+    # ``auto`` selects the configured routing policy; a backend model name
+    model: str = Field(default="auto", description="Model identifier")
     messages: List[ChatCompletionMessage] = Field(..., description="List of messages")
 
     # === Standard OpenAI parameters ===
@@ -101,29 +100,27 @@ class ChatCompletionRequest(BaseModel):
     # Structured outputs
     response_format: Optional[Dict[str, Any]] = None
 
-    # === vLLM-specific parameters ===
-    best_of: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    length_penalty: Optional[float] = None
-    early_stopping: Optional[bool] = None
-    ignore_eos: Optional[bool] = None
-    min_p: Optional[float] = None
-    top_k: Optional[int] = None
-    min_tokens: Optional[int] = None
-    stop_token_ids: Optional[List[int]] = None
-    skip_special_tokens: Optional[bool] = None
-    spaces_between_special_tokens: Optional[bool] = None
+    # # === vLLM-specific parameters ===
+    # best_of: Optional[int] = None
+    # repetition_penalty: Optional[float] = None
+    # length_penalty: Optional[float] = None
+    # early_stopping: Optional[bool] = None
+    # ignore_eos: Optional[bool] = None
+    # min_p: Optional[float] = None
+    # top_k: Optional[int] = None
+    # min_tokens: Optional[int] = None
+    # stop_token_ids: Optional[List[int]] = None
+    # skip_special_tokens: Optional[bool] = None
+    # spaces_between_special_tokens: Optional[bool] = None
 
-    # Guided decoding
-    guided_json: Optional[Union[str, Dict[str, Any]]] = None
-    guided_regex: Optional[str] = None
-    guided_choice: Optional[List[str]] = None
-    guided_grammar: Optional[str] = None
-    guided_decoding_backend: Optional[str] = None
-    guided_whitespace_pattern: Optional[str] = None
+    # # Guided decoding
+    # guided_json: Optional[Union[str, Dict[str, Any]]] = None
+    # guided_regex: Optional[str] = None
+    # guided_choice: Optional[List[str]] = None
+    # guided_grammar: Optional[str] = None
+    # guided_decoding_backend: Optional[str] = None
+    # guided_whitespace_pattern: Optional[str] = None
 
-    # Router-specific extensions
-    privacy_level: Optional[str] = "normal"
     extra_body: Optional[Dict[str, Any]] = None
 
 

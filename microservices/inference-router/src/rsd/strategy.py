@@ -54,12 +54,20 @@ class SortCriterion:
 
 
 @dataclass
+class CapabilitySelector:
+    """Provider capability selector criteria."""
+
+    complexity: Optional[Union[float, Dict[int, float]]] = None
+    tool_calling: Optional[bool] = None
+
+
+@dataclass
 class ProviderSelector:
     """Provider selector criteria used inside a strategy definition."""
 
     label: Optional[Union[str, Dict[int, str]]] = None
-    complexity: Optional[Union[float, Dict[int, float]]] = None
     cost: Optional[Union[float, Dict[int, float]]] = None
+    capability: CapabilitySelector = field(default_factory=CapabilitySelector)
 
 
 @dataclass
@@ -153,6 +161,9 @@ class StrategyExecutor:
             provider_metadata,
             provider_selector,
             rule_outputs,
+        ) and self._matches_tool_calling_selector(
+            provider_metadata,
+            provider_selector,
         )
 
     def _matches_label_selector(
@@ -198,7 +209,7 @@ class StrategyExecutor:
             rule_outputs,
         )
         if required_complexity is None:
-            return provider_selector.complexity is None
+            return True
 
         provider_complexity = self._resolve_attribute(provider_metadata, "capability.complexity")
         if not isinstance(provider_complexity, (int, float)):
@@ -211,7 +222,7 @@ class StrategyExecutor:
         provider_selector: ProviderSelector,
         rule_outputs: Dict[str, Any],
     ) -> Optional[float]:
-        complexity = provider_selector.complexity
+        complexity = provider_selector.capability.complexity
         if complexity is None:
             return None
         if isinstance(complexity, (int, float)):
@@ -256,6 +267,24 @@ class StrategyExecutor:
         if zone_index is None:
             return None
         return cost.get(zone_index)
+
+    def _matches_tool_calling_selector(
+        self,
+        provider_metadata: Dict[str, Any],
+        provider_selector: ProviderSelector,
+    ) -> bool:
+        required_tool_calling = provider_selector.capability.tool_calling
+        if required_tool_calling is None:
+            return True
+
+        provider_tool_calling = self._resolve_attribute(
+            provider_metadata,
+            "capability.tool_calling",
+        )
+        if provider_tool_calling is None:
+            provider_tool_calling = provider_metadata.get("tool_calling")
+
+        return provider_tool_calling is required_tool_calling
 
     def _first_zone_output(self, rule_outputs: Dict[str, Any]) -> Optional[int]:
         for value in rule_outputs.values():
@@ -392,10 +421,49 @@ def build_provider_selector(
             f"Strategy '{strategy_name}' must define 'provider_selector' as a mapping"
         )
 
+    _validate_no_top_level_capability_selectors(selector_data, strategy_name)
+
     return ProviderSelector(
         label=build_label_selector(selector_data.get("label"), strategy_name),
-        complexity=build_complexity_selector(selector_data.get("complexity"), strategy_name),
         cost=build_cost_selector(selector_data.get("cost"), strategy_name),
+        capability=build_capability_selector(selector_data.get("capability"), strategy_name),
+    )
+
+
+def _validate_no_top_level_capability_selectors(
+    selector_data: Dict[str, Any],
+    strategy_name: str,
+) -> None:
+    """Reject capability selectors outside provider_selector.capability."""
+    for field_name in ("complexity", "tool_calling"):
+        if field_name in selector_data:
+            raise ConfigurationError(
+                f"Strategy '{strategy_name}' provider_selector.{field_name} must move "
+                f"to provider_selector.capability.{field_name}"
+            )
+
+
+def build_capability_selector(
+    capability_data: Any,
+    strategy_name: str,
+) -> CapabilitySelector:
+    """Build provider capability selector data."""
+    if capability_data is None:
+        return CapabilitySelector()
+    if not isinstance(capability_data, dict):
+        raise ConfigurationError(
+            f"Strategy '{strategy_name}' provider_selector.capability must be a mapping"
+        )
+
+    return CapabilitySelector(
+        complexity=build_complexity_selector(
+            capability_data.get("complexity"),
+            strategy_name,
+        ),
+        tool_calling=build_tool_calling_selector(
+            capability_data.get("tool_calling"),
+            strategy_name,
+        ),
     )
 
 
@@ -440,7 +508,7 @@ def build_complexity_selector(
         return float(complexity_data)
     if not isinstance(complexity_data, dict):
         raise ConfigurationError(
-            f"Strategy '{strategy_name}' provider_selector.complexity must be a number or mapping"
+            f"Strategy '{strategy_name}' provider_selector.capability.complexity must be a number or mapping"
         )
 
     complexity_by_zone: Dict[int, float] = {}
@@ -450,7 +518,7 @@ def build_complexity_selector(
             complexity_by_zone[zone_index] = float(threshold)
         except (TypeError, ValueError) as exc:
             raise ConfigurationError(
-                f"Strategy '{strategy_name}' provider_selector.complexity must map zone indexes to numbers"
+                f"Strategy '{strategy_name}' provider_selector.capability.complexity must map zone indexes to numbers"
             ) from exc
 
     return complexity_by_zone
@@ -481,6 +549,20 @@ def build_cost_selector(
             ) from exc
 
     return cost_by_zone
+
+
+def build_tool_calling_selector(
+    tool_calling_data: Any,
+    strategy_name: str,
+) -> Optional[bool]:
+    """Build tool-calling capability selector data."""
+    if tool_calling_data is None:
+        return None
+    if isinstance(tool_calling_data, bool):
+        return tool_calling_data
+    raise ConfigurationError(
+        f"Strategy '{strategy_name}' provider_selector.capability.tool_calling must be a boolean"
+    )
 
 
 def build_rule_binding(rule_data: Dict[str, Any]) -> RuleBinding:

@@ -26,11 +26,18 @@ class ProviderAuthConfig:
 
 @dataclass
 class ProviderConfig:
-    """Generic provider configuration."""
+    """Generic provider configuration.
+
+    A provider is uniquely identified by ``name``; the ``model`` field is the
+    backend model identifier (e.g. ``"Qwen/Qwen3.5-9B"``) and is what clients
+    pass in ``request.model`` to route here. Two providers MAY share a model
+    name — disambiguated client-side via the ``owned_by`` field returned by
+    ``GET /v1/models``; routing falls back to first match.
+    """
 
     name: str
     type: str  # 'vllm', 'ollama', 'openai', etc.
-    model: Optional[str] = None  # Backend model identifier, e.g. "Qwen/Qwen3.5-9B"
+    model: str  # Backend model identifier, e.g. "Qwen/Qwen3.5-9B"
     enabled: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
     settings: Dict[str, Any] = field(default_factory=dict)

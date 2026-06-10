@@ -11,17 +11,28 @@ from typing import Optional
 
 
 # Keys that are handled by the router and should not be passed through to backends
-_EXCLUDE_KEYS = frozenset({"messages", "model", "stream", "privacy_level"})
+_EXCLUDE_KEYS = frozenset({"messages", "model", "stream"})
 
 
 def build_call_params(request_params: dict) -> dict:
     """Extract backend-passthrough parameters from request params.
 
-    Filters out router-specific keys (messages, model, stream, privacy_level)
-    and keys with None values.
+    Filters out router-specific keys (messages, model, stream) and keys with
+    None values.
     """
     return {k: v for k, v in request_params.items()
             if k not in _EXCLUDE_KEYS and v is not None}
+
+
+def sanitize_for_log(value) -> str:
+    """Strip CR/LF from a user-controlled value before logging.
+
+    Removing newline characters prevents an attacker from forging additional
+    log lines via embedded ``\\r``/``\\n`` sequences (CWE-117).
+    """
+    if value is None:
+        return ""
+    return str(value).replace("\r\n", "").replace("\n", "").replace("\r", "")
 
 
 def is_verbose_enabled(verbose_flag: bool = False) -> bool:

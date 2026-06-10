@@ -19,6 +19,8 @@ Options:
 
 Environment variable fallbacks:
   IMAGE_NAME, IMAGE_TAG
+  HTTP_PROXY/http_proxy, HTTPS_PROXY/https_proxy, NO_PROXY/no_proxy
+    are forwarded to the build as --build-arg if set.
 EOF
 }
 
@@ -54,6 +56,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+HTTP_PROXY_VAL="${HTTP_PROXY:-${http_proxy:-}}"
+HTTPS_PROXY_VAL="${HTTPS_PROXY:-${https_proxy:-}}"
+NO_PROXY_VAL="${NO_PROXY:-${no_proxy:-}}"
+
 IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
 
 BUILD_CMD=(
@@ -64,6 +70,18 @@ BUILD_CMD=(
 
 if [[ "${NO_CACHE}" == "true" ]]; then
   BUILD_CMD+=(--no-cache)
+fi
+
+if [[ -n "${HTTP_PROXY_VAL}" ]]; then
+  BUILD_CMD+=(--build-arg "HTTP_PROXY=${HTTP_PROXY_VAL}" --build-arg "http_proxy=${HTTP_PROXY_VAL}")
+fi
+
+if [[ -n "${HTTPS_PROXY_VAL}" ]]; then
+  BUILD_CMD+=(--build-arg "HTTPS_PROXY=${HTTPS_PROXY_VAL}" --build-arg "https_proxy=${HTTPS_PROXY_VAL}")
+fi
+
+if [[ -n "${NO_PROXY_VAL}" ]]; then
+  BUILD_CMD+=(--build-arg "NO_PROXY=${NO_PROXY_VAL}" --build-arg "no_proxy=${NO_PROXY_VAL}")
 fi
 
 BUILD_CMD+=("${ROOT_DIR}")

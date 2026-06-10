@@ -28,19 +28,6 @@ def test_litellm_provider_initialization(litellm_provider_config):
 
 
 @pytest.mark.unit
-def test_litellm_provider_falls_back_to_name_when_model_missing():
-    """When ``model`` is not set, the provider name is used as the model id."""
-    cfg = ProviderConfig(
-        name="my-llm",
-        type="openai",
-        enabled=True,
-        settings={"endpoint": "http://localhost:9000/v1"},
-    )
-    provider = LitellmProvider(cfg)
-    assert provider.model == "my-llm"
-
-
-@pytest.mark.unit
 @pytest.mark.anyio("asyncio")
 async def test_litellm_provider_chat_success(litellm_provider_config, mock_http_response):
     """chat() forwards to litellm.completion and adapts the raw dict response."""

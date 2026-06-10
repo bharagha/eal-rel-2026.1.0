@@ -12,7 +12,7 @@ description = "A pluggable inference router for chat completion requests with lo
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Libraries.ai", email = "hello@libraries.ai" }]
+authors = []
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
@@ -48,11 +48,6 @@ dev = [
     "isort>=5.12.0",
     "openai>=1.0.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/libraries-ai/inference-router"
-Repository = "https://github.com/libraries-ai/inference-router.git"
-Documentation = "https://github.com/libraries-ai/inference-router/blob/main/README.md"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

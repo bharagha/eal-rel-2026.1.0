@@ -176,10 +176,14 @@ def _build_provider_config(provider_data: dict) -> ProviderConfig:
     if not provider_type:
         raise ConfigurationError(f"Provider '{name}' must have a 'type'")
 
+    model = provider_data.get("model")
+    if not model:
+        raise ConfigurationError(f"Provider '{name}' must have a 'model'")
+
     return ProviderConfig(
         name=name,
         type=provider_type,
-        model=provider_data.get("model"),
+        model=model,
         enabled=provider_data.get("enabled", True),
         metadata=provider_data.get("metadata", {}),
         settings=provider_data.get("settings", {}),

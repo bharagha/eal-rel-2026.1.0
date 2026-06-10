@@ -12,7 +12,7 @@ Tests cover different kinds of request payloads the gateway should handle:
   - Streaming with stream_options and large tool sets
   - Message content format variants (text parts arrays)
   - vLLM-specific extensions (repetition_penalty, top_k, guided decoding)
-  - Router-specific extensions (cloud_allowed, privacy_level, latency_budget)
+  - Router-specific extensions (cloud_allowed, latency_budget)
   - Large payloads (20+ tools, 25K+ system prompts, null max_tokens)
   - Tool definition variants (strict, nested schemas, empty required)
 """
@@ -254,9 +254,9 @@ def available_model_ids(models_payload: dict[str, Any]) -> list[str]:
 @pytest.fixture(scope="session")
 def backend_model_id(available_model_ids: list[str]) -> str:
     for model_id in available_model_ids:
-        if model_id != "router":
+        if model_id != "auto":
             return model_id
-    pytest.skip("No backend model available besides the virtual router model")
+    pytest.skip("No backend model available besides the virtual auto model")
 
 
 # =====================================================================
@@ -307,7 +307,7 @@ class TestToolChoiceVariants:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                 {"role": "user", "content": "What tools do you have available? List them briefly."},
@@ -358,7 +358,7 @@ class TestToolChoiceVariants:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Find the latest news about AI."}],
             tools=tools,
             tool_choice="required",
@@ -368,6 +368,7 @@ class TestToolChoiceVariants:
 
         _assert_valid_response(response)
         choice = response["choices"][0]
+        print(choice)
         assert choice["finish_reason"] == "tool_calls"
         # tool_choice=required must produce a tool call
         tool_calls = choice["message"].get("tool_calls")
@@ -424,7 +425,7 @@ class TestToolChoiceVariants:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Add 3 and 5."}],
             tools=tools,
             tool_choice={"type": "function", "function": {"name": "calculate_sum"}},
@@ -467,7 +468,7 @@ class TestToolChoiceVariants:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant with tool access."},
                 {"role": "user", "content": "What is the weather in Paris?"},
@@ -548,7 +549,7 @@ class TestMultiTurnConversations:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -611,7 +612,7 @@ class TestMultiTurnConversations:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -682,7 +683,7 @@ class TestMultiTurnConversations:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -694,10 +695,12 @@ class TestMultiTurnConversations:
         choice = response["choices"][0]
         assert choice["message"]["role"] == "assistant"
         content = _visible_text(choice["message"])
-        assert "db.example.com" in content, (
+        # Use a word-boundary regex so `db.example.com` is matched as a discrete
+        # host reference, not as a substring of e.g. `not-db.example.com.evil`.
+        assert re.search(r"(?<![\w.-])db\.example\.com(?![\w.-])", content), (
             f"Expected response to reference the database host from tool results, got: {content[:200]}"
         )
-        assert "5432" in content, (
+        assert re.search(r"(?<!\d)5432(?!\d)", content), (
             f"Expected response to reference the database port from tool results, got: {content[:200]}"
         )
 
@@ -709,7 +712,7 @@ class TestMultiTurnConversations:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful math tutor."},
                 {"role": "user", "content": "What is 2 + 2?"},
@@ -732,7 +735,7 @@ class TestMultiTurnConversations:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {
                     "role": "user",
@@ -767,7 +770,7 @@ class TestResponseFormat:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "Reply in JSON only."},
                 {"role": "user", "content": 'Return a JSON object with key "greeting" and value "hello".'},
@@ -793,7 +796,7 @@ class TestResponseFormat:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "user", "content": "Name a car brand and model."},
             ],
@@ -842,7 +845,7 @@ class TestRequestParameters:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Reply with TOKEN_COMBINED only."}],
             temperature=0.7,
             top_p=0.9,
@@ -863,7 +866,7 @@ class TestRequestParameters:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Say something."}],
             logit_bias={"123": -100.0, "456": 50.0},
             temperature=0.5,
@@ -880,7 +883,7 @@ class TestRequestParameters:
     ) -> None:
         """n=2 should return two choices (if backend supports it)."""
         response = gateway_client.chat_completion(
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Name a color."}],
             n=2,
             temperature=0.8,
@@ -900,7 +903,7 @@ class TestRequestParameters:
         response = gateway_client.session.post(
             f"{gateway_client.base_url}/v1/chat/completions",
             json={
-                "model": "router",
+                "model": "auto",
                 "messages": [{"role": "user", "content": "Reply with TOKEN_NULL_MAXTOK only."}],
                 "temperature": 0.7,
                 "max_tokens": None,
@@ -934,7 +937,7 @@ class TestStreamingVariants:
         response = gateway_client.session.post(
             f"{gateway_client.base_url}/v1/chat/completions",
             json={
-                "model": "router",
+                "model": "auto",
                 "messages": [{"role": "user", "content": "Reply with TOKEN_STREAM_USAGE only."}],
                 "temperature": 0,
                 "max_tokens": 256,
@@ -1013,7 +1016,7 @@ class TestStreamingVariants:
         response = gateway_client.session.post(
             f"{gateway_client.base_url}/v1/chat/completions",
             json={
-                "model": "router",
+                "model": "auto",
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                     {"role": "user", "content": "What tools do you have available? List them briefly."},
@@ -1093,7 +1096,7 @@ class TestVllmExtensions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Reply with TOKEN_REP only."}],
             temperature=0,
             max_tokens=256,
@@ -1112,7 +1115,7 @@ class TestVllmExtensions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Reply with TOKEN_TOPK only."}],
             temperature=0.7,
             top_k=40,
@@ -1131,7 +1134,7 @@ class TestVllmExtensions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[{"role": "user", "content": "Pick a programming language. Reply with the choice only."}],
             guided_choice=["Python", "Rust", "Go"],
             temperature=0,
@@ -1233,7 +1236,7 @@ class TestLargePayloads:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                 {"role": "user", "content": "What tools do you have available? List them briefly."},
@@ -1266,7 +1269,7 @@ class TestLargePayloads:
 
         """
         # Reset stats so we can observe this request in isolation
-        gateway_client._request("POST", "/v1/stats/reset")
+        gateway_client._request("POST", "/v1/metrics/reset")
 
         # Build a system prompt well over 500 characters with realistic content
         system_prompt = (
@@ -1307,7 +1310,7 @@ class TestLargePayloads:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "What tools do you have?"},
@@ -1324,7 +1327,7 @@ class TestLargePayloads:
         assert content, "Expected non-empty response for long system prompt"
 
         # Check compression stats — if lingua is configured, total_compressions > 0
-        stats = gateway_client._request("GET", "/v1/stats")
+        stats = gateway_client._request("GET", "/v1/metrics")
         compression = stats.get("compression", {})
         total_compressions = compression.get("total_compressions", 0)
         if total_compressions > 0:
@@ -1383,7 +1386,7 @@ class TestToolDefinitions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                 {"role": "user", "content": "Call the read tool for /tmp/demo.txt."},
@@ -1446,7 +1449,7 @@ class TestToolDefinitions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                 {
@@ -1500,7 +1503,7 @@ class TestToolDefinitions:
         response = _chat(
             gateway_client,
             stream=stream,
-            model="router",
+            model="auto",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. You have access to tools to help users."},
                 {"role": "user", "content": "Call session_status now."},

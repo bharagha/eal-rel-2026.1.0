@@ -55,8 +55,7 @@ class LitellmProvider(ProviderAdapter):
 
         self.provider_type = provider_config.type
         # `model` is the backend model identifier passed to litellm
-        # (e.g. "Qwen/Qwen3.5-9B"). Fall back to the provider name if missing.
-        self.model = provider_config.model or provider_config.name
+        self.model = provider_config.model
         self.endpoint = settings.get("endpoint")
         self.timeout = settings.get("timeout")
         # Auth: scheme ∈ {"bearer" (default), "api_key", "none"}.

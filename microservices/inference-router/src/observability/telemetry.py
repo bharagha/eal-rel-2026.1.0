@@ -489,8 +489,14 @@ class InMemoryTelemetry(Telemetry):
                 metrics.total_tpot_ms += event.tpot_ms
                 metrics.tpot_count += 1
 
+            # Composite bucket key: ``"<model>@<provider>"`` so dashboards can
+            # tell which model handled the traffic when one provider exposes
+            # multiple models, or two providers share a model. Falls back to
+            # ``"<provider>"`` alone when the backend echoed no model id.
             provider_name = event.provider_name or "unknown"
-            bucket = metrics.for_provider(provider_name)
+            model_name = event.final_model or (event.models_used[0] if event.models_used else "")
+            bucket_key = f"{model_name}@{provider_name}" if model_name else provider_name
+            bucket = metrics.for_provider(bucket_key)
             bucket.requests += 1
             bucket.input_tokens += event.total_input_tokens
             bucket.output_tokens += event.total_output_tokens
@@ -570,7 +576,7 @@ class InMemoryTelemetry(Telemetry):
 
         Args:
             time_window: Optional time window to filter events
-            model_filter: Optional model name to filter events (e.g., "router", "Qwen/...", etc.)
+            model_filter: Optional model name to filter events (e.g., "auto", "Qwen/...", etc.)
         """
         events = self.get_compression_events(time_window)
 

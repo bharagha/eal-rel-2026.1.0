@@ -6,7 +6,6 @@ policies:
     criterion: FirstMatch
     strategies:
       - Planning
-      - QueryComplexity
       - ContextLengthQuality
 
   - name: CostFirst

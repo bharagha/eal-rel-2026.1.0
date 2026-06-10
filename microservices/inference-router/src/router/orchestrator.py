@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 # Sentinel ``request.model`` value that triggers DecisionEngine routing.
-ROUTER_MODEL_NAME = "router"
+ROUTER_MODEL_NAME = "auto"
 
 
 @dataclass
@@ -54,7 +54,11 @@ class RouterOrchestrator:
         self.decision_engine = decision_engine or DecisionEngine.from_config(self.config.routing)
         self.telemetry = telemetry
         self.providers: List[ProviderAdapter] = []
-        self.provider_map = {}  # name -> provider
+        self.provider_map = {}  # provider_name -> provider
+        # First-match map: backend model name (e.g. "Qwen/Qwen3.5-9B") → provider.
+        # When two providers share a model, the earlier-configured one wins.
+        # Routing checks model name first, then provider name (see _select_provider).
+        self.model_to_provider = {}  # model_name -> provider
         self.plugin_manager = create_plugin_manager(self.config.plugins)
 
     async def initialize(self) -> None:
@@ -73,7 +77,19 @@ class RouterOrchestrator:
                 if provider:
                     self.providers.append(provider)
                     self.provider_map[provider.name] = provider
-                    logger.info(f"Loaded provider: {provider.name} ({provider_config.type})")
+                    # First-match wins: skip if another provider already claimed this model.
+                    if provider_config.model not in self.model_to_provider:
+                        self.model_to_provider[provider_config.model] = provider
+                    else:
+                        logger.info(
+                            f"Model {provider_config.model!r} already mapped to "
+                            f"provider {self.model_to_provider[provider_config.model].name!r}; "
+                            f"{provider.name!r} reachable only by provider name."
+                        )
+                    logger.info(
+                        f"Loaded provider: {provider.name} "
+                        f"(type={provider_config.type}, model={provider_config.model})"
+                    )
                 else:
                     logger.info(f"Provider disabled: {provider_config.name}")
             except Exception as e:
@@ -99,12 +115,16 @@ class RouterOrchestrator:
 
         Plugin processing (prerouting → postrouting) runs in both paths; only
         the DecisionEngine call is skipped when the client picked a provider
-        by name:
+        by name or model:
 
-        - ``request.model == "router"`` → prerouting → DecisionEngine →
+        - ``request.model == "auto"`` → prerouting → DecisionEngine →
           postrouting. ``is_direct=False``.
-        - ``request.model`` matches a configured provider name → prerouting →
-          (skip DecisionEngine) → postrouting. ``is_direct=True``.
+        - ``request.model`` matches a configured backend model name (primary
+          path) → prerouting → (skip DecisionEngine) → postrouting.
+          ``is_direct=True``. Among providers sharing a model, the
+          earlier-configured one wins.
+        - ``request.model`` matches a configured provider name (fallback) →
+          same as above. ``is_direct=True``.
         - otherwise → raise :class:`RoutingError`.
 
         Returns ``(provider, route_info, request)``. The request is returned
@@ -113,11 +133,18 @@ class RouterOrchestrator:
         request = await self.plugin_manager.process_prerouting_request(request)
 
         if request.model and request.model != ROUTER_MODEL_NAME:
-            provider = self.provider_map.get(request.model)
+            # Model name takes precedence; provider name is the legacy fallback.
+            provider = self.model_to_provider.get(request.model)
             if provider is None:
-                available = list(self.provider_map) + [ROUTER_MODEL_NAME]
+                provider = self.provider_map.get(request.model)
+            if provider is None:
+                available_models = list(self.model_to_provider)
+                available_providers = list(self.provider_map)
                 raise RoutingError(
-                    f"Unknown model: {request.model!r}. Available models: {available}"
+                    f"Unknown model: {request.model!r}. "
+                    f"Available models: {available_models}, "
+                    f"providers: {available_providers}, "
+                    f"or use {ROUTER_MODEL_NAME!r} for automatic routing."
                 )
             request = await self.plugin_manager.process_postrouting_request(request)
             return provider, RouteInfo(
@@ -144,7 +171,7 @@ class RouterOrchestrator:
 
         Raises:
             RoutingError: If ``request.model`` doesn't match a known provider
-                and isn't the ``"router"`` sentinel.
+                and isn't the ``"auto"`` sentinel.
             ProviderError: If the selected provider's call fails.
         """
         provider, route_info, request = await self._select_provider(request)
