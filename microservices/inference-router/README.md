@@ -53,7 +53,7 @@ To stop the service:
 bash scripts/deploy_docker.sh --down
 ```
 
-See [docs/quick-start-guide.md](docs/quick-start-guide.md) for more information.
+See [docs/user-guide/get-started.md](docs/user-guide/get-started.md) for more information.
 
 ## Architecture
 
@@ -62,9 +62,9 @@ See [docs/quick-start-guide.md](docs/quick-start-guide.md) for more information.
 │  FastAPI Gateway (/v1/chat/completions) │
 └────────────────┬────────────────────────┘
                  │
-       ┌─────────▼──────────┐
+       ┌─────────▼───────────┐
        │  Router Orchestrator│ (applies routing policy)
-       └─────────┬──────────┘
+       └─────────┬───────────┘
                  │
     ┌────────────▼──────────────┐
     │ ProviderAdapter Interface │
