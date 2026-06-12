@@ -70,7 +70,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
     logger.info(
         f"Request received: request_id={request_id}, "
         f"model={sanitize_for_log(request.model)}, "
-        f"stream={request.stream}"
+        f"stream={bool(request.stream)}"
     )
     logger.debug(
         f"Request details: request_id={request_id}, "
@@ -360,7 +360,7 @@ async def get_plugin(name: str, node: str, http_request: Request) -> PluginRespo
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get plugin {name}/{node}: {e}")
+        logger.error(f"Failed to get plugin {sanitize_for_log(name)}/{sanitize_for_log(node)}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get plugin configuration")
 
 
@@ -396,7 +396,7 @@ async def update_plugin(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update plugin {name}/{node}: {e}")
+        logger.error(f"Failed to update plugin {sanitize_for_log(name)}/{sanitize_for_log(node)}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update plugin configuration")
 
 
@@ -432,5 +432,5 @@ async def create_or_update_plugin(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create/update plugin {name}/{node}: {e}")
+        logger.error(f"Failed to create/update plugin {sanitize_for_log(name)}/{sanitize_for_log(node)}: {e}")
         raise HTTPException(status_code=500, detail="Failed to configure plugin")
